@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PipeMind — Issiq pol va isitish tizimi hisobi</title>
+<meta name="description" content="PipeMind: santexnik ustalar uchun plan chizish, issiqlik yo‘qotilishi, issiq pol hisobi va 3D ko‘rinish.">
+<meta name="theme-color" content="#070b16">
+<!-- Google Search Console tasdiqlash tegini shu yerga qo‘ying -->
+<link rel="manifest" href="manifest.json">
+<style>
+*{box-sizing:border-box;margin:0}
+:root{--bg:#070b16;--ln:#22305a;--tx:#e8eeff;--mu:#8fa3d0;--ac:#ff7a2f;--bl:#4f8cff}
+body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(900px 450px at 85% -10%,#1b2f6b66,transparent),radial-gradient(700px 400px at -10% 100%,#ff7a2f25,transparent),var(--bg);color:var(--tx);min-height:100vh;padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px}
+h1{font-size:23px;letter-spacing:-.5px}h1 span{background:linear-gradient(90deg,var(--bl),var(--ac));-webkit-background-clip:text;background-clip:text;color:transparent}
+section{display:none;padding:0 12px}section.on{display:block}
+.card{background:linear-gradient(160deg,#141f3f,#0d1428);border:1px solid var(--ln);border-radius:16px;padding:14px;margin:10px 0}
+.cvw{border:1px solid var(--ln);border-radius:16px;overflow:hidden;background:#0a1124}
+canvas{width:100%;display:block;touch-action:none}
+input{width:100%;background:#0a1124;border:1px solid var(--ln);color:var(--tx);border-radius:10px;padding:10px;font-size:16px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+label{font-size:12px;color:var(--mu)}
+button{background:linear-gradient(90deg,var(--bl),var(--ac));border:0;color:#fff;border-radius:12px;padding:12px 16px;font-weight:600;font-size:15px;width:100%}
+button.s{background:#1a2650;margin-top:8px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;gap:4px;background:#0b1226ee;backdrop-filter:blur(14px);border-top:1px solid var(--ln);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+nav a{flex:1;text-align:center;padding:8px;border-radius:12px;color:var(--mu);font-size:12px}
+nav a.on{color:#fff;background:#1a2650}nav i{display:block;font-size:20px;font-style:normal}
+.hint{color:var(--mu);font-size:13px}.big{font-size:30px;font-weight:700}.warn{color:#ffb35c}
+.rows{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:14px;margin-top:8px}.rows span{color:var(--mu)}
+#gl{height:62vh;border-radius:16px;overflow:hidden;border:1px solid var(--ln);background:radial-gradient(circle at 50% 30%,#18265a,#070b16)}
+details{margin:10px 0}summary{padding:12px;color:var(--mu)}
+@media print{body{background:#fff;color:#000;padding:0}header,nav,details,button,section{display:none!important}#calc{display:block!important}.card{background:#fff;border:1px solid #999;color:#000;break-inside:avoid}.hint,.rows span{color:#444}}
+</style>
+</head>
+<body>
+<header><h1>Pipe<span>Mind</span></h1><small class="hint" id="tot"></small></header>
+
+<section id="plan" class="on">
+  <div class="cvw"><canvas id="cv"></canvas></div>
+  <div class="card" id="ed"></div>
+</section>
+
+<section id="calc">
+  <div id="res"></div>
+  <details class="card"><summary>⚙️ Sozlamalar (koeffitsiyentlar)</summary><div class="g" id="set"></div></details>
+  <button onclick="window.print()">📄 PDF / Chop etish</button>
+  <p class="hint" style="margin-top:10px">Hisob taxminiy (soddalashtirilgan usul). Amaliy loyihadan oldin mutaxassis tekshiruvi tavsiya etiladi.</p>
+</section>
+
+<section id="v3">
+  <div id="gl"></div>
+  <p class="hint" style="margin-top:8px">Bir barmoq: aylantirish · Ikki barmoq: yaqinlashtirish. Pol rangi: ko‘k (kam yo‘qotish) → to‘q sariq (ko‘p). To‘q sariq quvur — issiq pol konturi.</p>
+</section>
+
+<nav>
+  <a id="t-plan" class="on" onclick="go('plan')"><i>📐</i>Plan</a>
+  <a id="t-calc" onclick="go('calc')"><i>🔥</i>Hisob</a>
+  <a id="t-v3" onclick="go('v3')"><i>🧊</i>3D</a>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),f1=n=>(Math.round(n*10)/10).toString();
+let S=JSON.parse(localStorage.getItem('pm')||'null')||{
+ r:[{n:"Mehmonxona",x:0,y:0,w:5,h:4},{n:"Yotoqxona",x:5,y:0,w:3.5,h:4},{n:"Oshxona",x:0,y:4,w:4,h:3.5}],
+ s:{ti:20,to:-10,h:2.7,uw:.5,ug:1.6,uc:.3,uf:.3,gl:20,n:.5,fa:85,lead:5,dt:5}};
+const save=()=>localStorage.setItem('pm',JSON.stringify(S));
+let sel=null,tab='plan',drag=null,sc=30;
+
+/* ---------- HISOB ---------- */
+function calc(){
+ const s=S.s,dT=s.ti-s.to,hit=(r,x,y)=>S.r.some(o=>o!==r&&x>o.x&&x<o.x+o.w&&y>o.y&&y<o.y+o.h);
+ return S.r.map(r=>{
+  const A=r.w*r.h;
+  const ext=[0,1,2,3].map(j=>{let n=0;for(let i=0;i<10;i++){const t=(i+.5)/10,
+   p=j<2?[r.x+t*r.w,r.y+(j?r.h+.05:-.05)]:[r.x+(j==3?r.w+.05:-.05),r.y+t*r.h];if(!hit(r,p[0],p[1]))n++}return n/10});
+  const L=(ext[0]+ext[1])*r.w+(ext[2]+ext[3])*r.h,wa=L*s.h,win=wa*s.gl/100;
+  const Q=((wa-win)*s.uw+win*s.ug+A*s.uc+A*s.uf*.5+.34*s.n*A*s.h)*dT;
+  const Ah=A*s.fa/100,qf=Q/Ah,st=qf<=50?20:qf<=75?15:10,len=Ah/(st/100)+2*s.lead,tm=s.ti+qf*.18;
+  return{A,ext,Q,qm:Q/A,qf,st,len,lp:Math.ceil(len/100),G:Q*.86/s.dt,ts:tm+s.dt/2,bad:qf>100}});
+}
+function rep(){
+ const K=calc(),T=K.reduce((a,k)=>({Q:a.Q+k.Q,A:a.A+k.A,L:a.L+k.len,lp:a.lp+k.lp,G:a.G+k.G}),{Q:0,A:0,L:0,lp:0,G:0});
+ $('#tot').textContent=f1(T.Q/1000)+' kVt · '+f1(T.A)+' m²';
+ $('#res').innerHTML=`<div class="card"><div class="big">${f1(T.Q/1000)} kVt</div>
+ <span class="hint">Umumiy isitish yuki · qozon tavsiyasi ≥ ${f1(T.Q*1.15/1000)} kVt</span>
+ <div class="rows"><span>Maydon</span><b>${f1(T.A)} m²</b><span>Quvur (16 mm)</span><b>${Math.round(T.L)} m</b>
+ <span>Kollektor chiqishi</span><b>${T.lp} ta</b><span>Umumiy sarf</span><b>${Math.round(T.G)} l/soat</b></div></div>`+
+ S.r.map((r,i)=>{const k=K[i];return`<div class="card"><b>${r.n}</b> <span class="hint">${f1(k.A)} m²</span>
+ <div class="rows"><span>Issiqlik yo‘qotilishi</span><b>${Math.round(k.Q)} W (${Math.round(k.qm)} W/m²)</b>
+ <span>Quvur qadami</span><b>${k.st} sm</b><span>Quvur uzunligi</span><b>${Math.round(k.len)} m</b>
+ <span>Konturlar</span><b>${k.lp} ta</b><span>Sarf</span><b>${Math.round(k.G)} l/soat</b>
+ <span>Berish harorati</span><b>~${Math.round(k.ts)} °C</b></div>
+ ${k.bad?'<p class="warn" style="margin-top:8px">⚠️ Issiq pol yetarli emas — radiator qo‘shing.</p>':''}</div>`}).join('');
+}
+const F=[['ti','Ichki harorat °C',1],['to','Tashqi hisobiy °C',1],['h','Shift balandligi m',.1],['uw','Devor U',.05],['ug','Oyna U',.1],['uc','Shift U',.05],['uf','Pol U',.05],['gl','Oyna ulushi %',5],['n','Havo almashinuvi 1/soat',.1],['fa','Isitiladigan pol %',5],['lead','Kollektorgacha m',1],['dt','Berish–qaytish ΔT',1]];
+$('#set').innerHTML=F.map(f=>`<label>${f[1]}<input type="number" step="${f[2]}" data-k="${f[0]}" value="${S.s[f[0]]}"></label>`).join('');
+$('#set').oninput=e=>{const k=e.target.dataset.k;if(k&&e.target.value!==''){S.s[k]=+e.target.value;save();rep();draw()}};
+
+/* ---------- PLAN ---------- */
+const cv=$('#cv'),c=cv.getContext('2d');
+function size(){const w=cv.parentElement.clientWidth,h=Math.round(innerHeight*.5),d=devicePixelRatio||1;
+ cv.style.height=h+'px';cv.width=w*d;cv.height=h*d;cv._d=d;sc=Math.min(w/13,h/11);draw()}
+function draw(){
+ const d=cv._d;c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,cv.width,cv.height);
+ c.strokeStyle='rgba(120,160,255,.13)';c.lineWidth=1;
+ for(let i=0;i<=13;i++){c.beginPath();c.moveTo(i*sc,0);c.lineTo(i*sc,11*sc);c.stroke()}
+ for(let i=0;i<=11;i++){c.beginPath();c.moveTo(0,i*sc);c.lineTo(13*sc,i*sc);c.stroke()}
+ const K=calc();
+ S.r.forEach((r,i)=>{const t=Math.min(1,K[i].qm/120);
+  c.fillStyle=`hsla(${210-t*180},80%,55%,.3)`;c.fillRect(r.x*sc,r.y*sc,r.w*sc,r.h*sc);
+  c.strokeStyle=r===sel?'#fff':'#5b8cff';c.lineWidth=r===sel?3:2;c.strokeRect(r.x*sc,r.y*sc,r.w*sc,r.h*sc);
+  c.textAlign='center';c.fillStyle='#fff';c.font='600 12px system-ui';c.fillText(r.n,(r.x+r.w/2)*sc,(r.y+r.h/2)*sc-2);
+  c.fillStyle='#9fb3d9';c.font='11px system-ui';c.fillText(f1(K[i].A)+' m² · '+Math.round(K[i].Q)+' W',(r.x+r.w/2)*sc,(r.y+r.h/2)*sc+13)});
+ if(drag&&drag.nw){c.setLineDash([6,4]);c.strokeStyle='#ff7a2f';c.lineWidth=2;
+  c.strokeRect(Math.min(drag.a.x,drag.b.x)*sc,Math.min(drag.a.y,drag.b.y)*sc,Math.abs(drag.b.x-drag.a.x)*sc,Math.abs(drag.b.y-drag.a.y)*sc);c.setLineDash([])}
+}
+const P=e=>{const b=cv.getBoundingClientRect();return{x:Math.round((e.clientX-b.left)/sc*2)/2,y:Math.round((e.clientY-b.top)/sc*2)/2}};
+cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);const p=P(e),
+ h=[...S.r].reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);
+ if(h){sel=h;drag={mv:1,a:p,ox:h.x,oy:h.y}}else{sel=null;drag={nw:1,a:p,b:p}}ui();draw()};
+cv.onpointermove=e=>{if(!drag)return;const p=P(e);
+ if(drag.nw)drag.b=p;else{sel.x=Math.max(0,drag.ox+p.x-drag.a.x);sel.y=Math.max(0,drag.oy+p.y-drag.a.y)}draw()};
+cv.onpointerup=()=>{if(drag&&drag.nw){const w=Math.abs(drag.b.x-drag.a.x),h=Math.abs(drag.b.y-drag.a.y);
+ if(w>=1&&h>=1){sel={n:'Xona '+(S.r.length+1),x:Math.min(drag.a.x,drag.b.x),y:Math.min(drag.a.y,drag.b.y),w,h};S.r.push(sel)}}
+ drag=null;save();ui();draw();rep()};
+function ui(){
+ const e=$('#ed');
+ if(!sel){e.innerHTML='<p class="hint">Bo‘sh joyga barmoq bilan sudrab xona chizing. Xonani bosib tanlang, sudrab ko‘chiring. Hisob avtomatik yangilanadi.</p>';return}
+ e.innerHTML=`<label>Nomi<input id="nm" value="${sel.n}"></label><div class="g"><label>Eni (m)<input id="ww" type="number" step=".5" value="${sel.w}"></label><label>Bo‘yi (m)<input id="hh" type="number" step=".5" value="${sel.h}"></label></div><button class="s" id="del">🗑 O‘chirish</button>`;
+ $('#nm').onchange=ev=>{sel.n=ev.target.value;save();draw();rep()};
+ $('#ww').onchange=ev=>{sel.w=Math.max(1,+ev.target.value);save();draw();rep()};
+ $('#hh').onchange=ev=>{sel.h=Math.max(1,+ev.target.value);save();draw();rep()};
+ $('#del').onclick=()=>{S.r=S.r.filter(r=>r!==sel);sel=null;save();ui();draw();rep()};
+}
+
+/* ---------- 3D ---------- */
+let scene,cam,ren,grp,tg=new THREE.Vector3(),th=.7,ph=1,rad=14,run=0;
+function pipe(r,st){
+ const m=.25,x0=r.x+m,x1=r.x+r.w-m,y0=r.y+m,y1=r.y+r.h-m,n=Math.max(1,Math.floor((y1-y0)/st)+1),V=THREE.Vector3,Q=[];
+ for(let i=0;i<n;i++){const y=y0+i*st,d=i%2?-1:1,a=d>0?x0:x1,b=d>0?x1:x0;Q.push(new V(a,.04,y),new V(b,.04,y));
+  if(i<n-1)for(let k=1;k<8;k++){const t=-Math.PI/2+k*Math.PI/8;Q.push(new V(b+d*Math.cos(t)*st/2,.04,y+st/2+Math.sin(t)*st/2))}}
+ return Q}
+function init3(){
+ if(ren)return;
+ ren=new THREE.WebGLRenderer({antialias:true,alpha:true});ren.setPixelRatio(Math.min(2,devicePixelRatio||1));$('#gl').appendChild(ren.domElement);
+ cam=new THREE.PerspectiveCamera(45,1,.1,300);scene=new THREE.Scene();
+ scene.add(new THREE.AmbientLight(0xffffff,.75));const l=new THREE.DirectionalLight(0xffffff,.8);l.position.set(6,14,8);scene.add(l);
+ const el=ren.domElement,pts=new Map();el.style.touchAction='none';
+ el.onpointerdown=e=>{el.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY])};
+ el.onpointerup=el.onpointercancel=e=>pts.delete(e.pointerId);
+ el.onpointermove=e=>{const o=pts.get(e.pointerId);if(!o)return;
+  if(pts.size==1){th-=(e.clientX-o[0])*.01;ph=Math.min(1.5,Math.max(.1,ph-(e.clientY-o[1])*.01))}
+  else{const q=pts.get([...pts.keys()].find(i=>i!=e.pointerId));
+   rad=Math.min(80,Math.max(3,rad*Math.hypot(o[0]-q[0],o[1]-q[1])/Math.hypot(e.clientX-q[0],e.clientY-q[1])))}
+  pts.set(e.pointerId,[e.clientX,e.clientY])};
+ el.onwheel=e=>{e.preventDefault();rad=Math.min(80,Math.max(3,rad*(1+e.deltaY*.001)))};
+}
+function build3(){
+ init3();if(grp)scene.remove(grp);grp=new THREE.Group();
+ const K=calc(),H=S.s.h;let mx=1,my=1;
+ S.r.forEach((r,i)=>{const k=K[i],t=Math.min(1,k.qm/120);
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(r.w,.1,r.h),new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL((210-t*180)/360,.7,.45)}));
+  fl.position.set(r.x+r.w/2,-.05,r.y+r.h/2);grp.add(fl);
+  k.ext.forEach((e,j)=>{const hz=j<2,len=hz?r.w:r.h,
+   w=new THREE.Mesh(new THREE.BoxGeometry(hz?len:.12,H,hz?.12:len),new THREE.MeshLambertMaterial({color:e>.5?0x9fb8ff:0x4a5a8a,transparent:true,opacity:e>.5?.35:.18}));
+   w.position.set(hz?r.x+r.w/2:r.x+(j==2?0:r.w),H/2,hz?r.y+(j==0?0:r.h):r.y+r.h/2);grp.add(w)});
+  const Pt=pipe(r,k.st/100);
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Pt,false,'centripetal'),Pt.length*4,.03,6),new THREE.MeshLambertMaterial({color:0xff7a2f,emissive:0x662200})));
+  mx=Math.max(mx,r.x+r.w);my=Math.max(my,r.y+r.h)});
+ scene.add(grp);tg.set(mx/2,0,my/2);rad=Math.max(mx,my)*1.4+3;
+}
+function loop(){
+ if(tab!='v3'){run=0;return}
+ const el=$('#gl'),w=el.clientWidth,h=el.clientHeight,k=w+'x'+h;
+ if(ren._k!=k){ren._k=k;ren.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}
+ cam.position.set(tg.x+rad*Math.sin(ph)*Math.cos(th),rad*Math.cos(ph),tg.z+rad*Math.sin(ph)*Math.sin(th));
+ cam.lookAt(tg);ren.render(scene,cam);requestAnimationFrame(loop)}
+
+/* ---------- NAV ---------- */
+function go(t){
+ tab=t;['plan','calc','v3'].forEach(x=>{$('#'+x).classList.toggle('on',x==t);$('#t-'+x).classList.toggle('on',x==t)});
+ if(t=='plan')size();if(t=='calc')rep();
+ if(t=='v3'){build3();if(!run){run=1;loop()}}
+}
+addEventListener('resize',()=>{if(tab=='plan')size()});
+size();ui();rep();
+</script>
+</body>
+</html>
